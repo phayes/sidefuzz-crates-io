@@ -8,7 +8,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/phayes/sidefuzz"
 description = "Fuzzer to automatically find side-channel (timing) vulnerabilities"
 keywords = ["fuzzing", "constant-time", "cryptography", "wasm"]
-categories = ["cryptography", "testing"]
+categories = ["cryptography", "development-tools::testing"]
 
 [dependencies]
 lazy_static = "1.3.0"
