@@ -1,4 +1,4 @@
-## SideFuzz: Fuzzing for timing side-channel vulnerabilities
+## SideFuzz: Fuzzing for side-channel vulnerabilities
 
 SideFuzz is an adaptive fuzzer that uses a genetic-algorithim optimizer in combination with t-statistics to find side-channel (timing) vulnerabilities in cryptography compiled to [wasm](https://webassembly.org).
 
@@ -16,44 +16,40 @@ SideFuzz works by counting instructions executed in the [wasmi](https://github.c
 
 - The t-statistic stays low, even after significant sampling. In this case the candidate input pairs are rejected and SideFuzz returns to phase 1, resuming the genetic-algorithim optimizer to find another local optimum.
 
-### Furthur Reading
+### What it gets you
 
-1. "DifFuzz: Differential Fuzzing for Side-Channel Analysis", Nilizadeh et al.
-   https://arxiv.org/abs/1811.07005
+Fuzzing with SideFuzz shows that your Rust code can be constant-time, but doesn't show that it _is_ constant-time on all architectures. This is because LLVM backends [can and will](http://www.reparaz.net/oscar/misc/cmov.html) ruin constant-time Rust / LLVM-IR when compiling to machine-code. SideFuzz should be considered a "good first step" to be followed up with [dudect-bencher](https://crates.io/crates/dudect-bencher) and [ctgrind](https://github.com/RustCrypto/utils/tree/master/ctgrind). It should also be noted that proper compiler support for constant-time code-generation is an unsolved problem in the Rust ecosystem. There have been some ideas around using [cranelift](https://github.com/CraneStation/cranelift) for constant-time code generation, but things are still in the brainstorming phase.
 
-2. "Dude, is my code constant time?", Reparaz et al. https://eprint.iacr.org/2016/1123.pdf
+## Installation
 
-3. "Rust, dudect and constant-time crypto in debug mode", brycx.
-   https://brycx.github.io/2019/04/21/rust-dudect-constant-time-crypto.html
+```
+rustup target add wasm32-unknown-unknown
+git clone git@github.com:phayes/sidefuzz.git
+cd sidefuzz && cargo install --path .
+```
 
-### Related Tools
+(Cannot currently do `cargo install sidefuzz` because of [this issue](https://github.com/phayes/sidefuzz/issues/12))
 
-1. `dudect-bencher`. An implementation of the DudeCT constant-time function tester. In comparison to SideFuzz, this tool more closely adheres to the original dudect design. https://crates.io/crates/dudect-bencher
-
-2. `ctgrind`. Tool for checking that functions are constant time using Valgrind. https://github.com/RustCrypto/utils/tree/master/ctgrind
-
-## Rust
+## Creating a Rust fuzz target
 
 Creating a target in rust is very easy.
 
 ```rust
 // lib.rs
-
 #[no_mangle]
 pub extern "C" fn fuzz() {
-  let input = sidefuzz::get_input(32); // 32 bytes of of fuzzing input as a &[u8]
+  let input = sidefuzz::fetch_input(32); // 32 bytes of of fuzzing input as a &[u8]
   sidefuzz::black_box(my_hopefully_constant_fn(input));
 }
 ```
 
 ```toml
 # Cargo.toml
-
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-sidefuzz = {git = "https://github.com/phayes/sidefuzz"}
+sidefuzz = "0.1.1"
 ```
 
 Compile and fuzz the target like so:
@@ -75,7 +71,7 @@ When fixing variable-time code, sidefuzz can also help with `sidefuzz count` to 
 cargo build --release && sidefuzz count my_target.wasm 01250bf9
 ```
 
-## Other Languages
+## Creating a fuzz target in other languages
 
 SideFuzz works with Go, C, C++ and other langauges that compile to wasm.
 
@@ -88,14 +84,6 @@ The wasm module should provide four exports:
 3. A function named "input_pointer" that returns an i32 pointer to a location in linear memory where we can can write an array of input bytes. The "fuzz" fuction should read this array of bytes as input for it's fuzzing.
 
 4. A function named "input_len" that returns an i32 with the desired length of input in bytes.
-
-## Installation
-
-```
-rustup target add wasm32-unknown-unknown
-git clone git@github.com:phayes/sidefuzz.git
-cd sidefuzz && cargo install --path .
-```
 
 ## FAQ
 
@@ -113,7 +101,7 @@ You should make use of a PRNG with a static seed. While this is a bad idea for p
 
 #### 4. What's up with `black_box` ?
 
-`sidefuzz::black_box` is used to avoid dead-code elimination. Becauee we are interested in exercising the fuzzed code instead of getting results from it, the exported `sidefuzz` function doesn't return anything. The Rust optimizer sees all functions that don't return as dead-code and will try to eliminate them as part of it's optimizations. `black_box` is a function that is opaque to the optimizer, allowing us to exercise functions that don't return without them being optimized away. It should be used whenever calling a function that doesn't return anything or where we are ignoring the output returned.
+`sidefuzz::black_box` is used to avoid dead-code elimination. Because we are interested in exercising the fuzzed code instead of getting results from it, the exported `fuzz` function doesn't return anything. The Rust optimizer sees all functions that don't return as dead-code and will try to eliminate them as part of it's optimizations. `black_box` is a function that is opaque to the optimizer, allowing us to exercise functions that don't return without them being optimized away. It should be used whenever calling a function that doesn't return anything or where we are ignoring the output returned.
 
 #### 5. The fuzzer gave me invalid inputs, what now?
 
@@ -122,3 +110,19 @@ You should panic (causing a wasm trap). This will signal to the fuzzer that the 
 #### 6. I need to do some variable-time set-up. How do I do that?
 
 You should use [`lazy_static`](https://crates.io/crates/lazy_static) to do any set-up work (like generating keys etc). The target is always run once to prime lazy statics before the real fuzzing starts.
+
+## Related Tools
+
+1. `dudect-bencher`. An implementation of the DudeCT constant-time function tester. In comparison to SideFuzz, this tool more closely adheres to the original dudect design. https://crates.io/crates/dudect-bencher
+
+2. `ctgrind`. Tool for checking that functions are constant time using Valgrind. https://github.com/RustCrypto/utils/tree/master/ctgrind
+
+## Furthur Reading
+
+1. "DifFuzz: Differential Fuzzing for Side-Channel Analysis", Nilizadeh et al.
+   https://arxiv.org/abs/1811.07005
+
+2. "Dude, is my code constant time?", Reparaz et al. https://eprint.iacr.org/2016/1123.pdf
+
+3. "Rust, dudect and constant-time crypto in debug mode", brycx.
+   https://brycx.github.io/2019/04/21/rust-dudect-constant-time-crypto.html
